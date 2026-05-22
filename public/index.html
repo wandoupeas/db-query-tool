@@ -1,0 +1,2417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>数据库查询工具</title>
+
+  <!-- CodeMirror 5 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/sql-hint.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css" />
+
+  <!-- xlsx.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-app:      #1a1a2e;
+      --bg-panel:    #16213e;
+      --bg-card:     #0f3460;
+      --bg-input:    #0d1b2a;
+      --accent:      #e94560;
+      --accent2:     #533483;
+      --text:        #e0e0e0;
+      --text-muted:  #8a8fa8;
+      --border:      #2a2d4a;
+      --success:     #4caf50;
+      --error:       #f44336;
+      --warning:     #ff9800;
+      --sidebar-w:   280px;
+    }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg-app);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    button { cursor: pointer; font-family: inherit; font-size: 13px; }
+    input, select, textarea { font-family: inherit; font-size: 13px; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-panel); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* ── Layout ───────────────────────────────────────────── */
+    #auth-view {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(233,69,96,0.16), transparent 28%),
+        radial-gradient(circle at 78% 80%, rgba(76,175,80,0.12), transparent 26%),
+        var(--bg-app);
+    }
+    .auth-card {
+      width: 360px;
+      max-width: 100%;
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-panel);
+      box-shadow: 0 18px 60px rgba(0,0,0,0.3);
+    }
+    .auth-card h2 { font-size: 18px; color: var(--accent); margin-bottom: 4px; }
+    .auth-card p { color: var(--text-muted); font-size: 12px; margin-bottom: 18px; }
+    .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px; }
+    .auth-tab { background: var(--bg-card); color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; padding: 7px; }
+    .auth-tab.active { color: #fff; border-color: var(--accent); background: rgba(233,69,96,0.18); }
+    .auth-message { min-height: 18px; margin: 8px 0 0; font-size: 12px; color: var(--error); }
+    .auth-message.success { color: var(--success); }
+
+    #app {
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      grid-template-rows: 100vh;
+      height: 100vh;
+    }
+
+    /* ── Sidebar ──────────────────────────────────────────── */
+    #sidebar {
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-header {
+      padding: 14px 16px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sidebar-header h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+    }
+    .sidebar-header span { font-size: 18px; }
+    .sidebar-body { flex: 1; overflow-y: auto; padding: 8px 0; }
+
+    /* Accordion sections */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      cursor: pointer;
+      user-select: none;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      transition: color 0.2s;
+    }
+    .section-header:hover { color: var(--text); }
+    .section-header .arrow { transition: transform 0.2s; font-size: 10px; }
+    .section-header.open .arrow { transform: rotate(90deg); }
+    .section-content { display: none; }
+    .section-content.open { display: block; }
+
+    /* Connection form */
+    .conn-form { padding: 10px 14px; }
+    .form-row { margin-bottom: 8px; }
+    .form-row label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
+    .form-row input, .form-row select {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      padding: 5px 8px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-row input:focus, .form-row select:focus { border-color: var(--accent); }
+    .form-row select option { background: var(--bg-input); }
+    .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .btn { border: none; border-radius: 4px; padding: 6px 12px; font-weight: 600; transition: all 0.2s; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #c73652; }
+    .btn-secondary { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #3d9140; }
+    .btn-danger { background: var(--error); color: #fff; }
+    .btn-danger:hover { background: #c62828; }
+    .btn-sm { padding: 3px 8px; font-size: 11px; }
+    .btn-block { width: 100%; }
+    .btn-row { display: flex; gap: 6px; }
+
+    /* Connection status */
+    .conn-status {
+      padding: 6px 14px;
+      font-size: 11px;
+      border-radius: 4px;
+      margin: 0 14px 8px;
+      display: none;
+    }
+    .conn-status.success { background: rgba(76,175,80,0.15); color: var(--success); display: block; }
+    .conn-status.error   { background: rgba(244,67,54,0.15); color: var(--error); display: block; }
+
+    /* Saved connections */
+    .saved-conn-list { padding: 0 8px; }
+    .saved-conn-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.15s;
+      border: 1px solid transparent;
+    }
+    .saved-conn-item:hover { background: rgba(255,255,255,0.04); }
+    .saved-conn-item.active { background: rgba(233,69,96,0.12); border-color: var(--accent); }
+    .saved-conn-item .conn-icon { font-size: 14px; flex-shrink: 0; }
+    .saved-conn-item .conn-info { flex: 1; min-width: 0; }
+    .saved-conn-item .conn-name { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .saved-conn-item .conn-detail { font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .saved-conn-item .conn-del {
+      background: none; border: none; color: var(--text-muted); font-size: 14px; padding: 2px;
+      opacity: 0; transition: opacity 0.15s; line-height: 1;
+    }
+    .saved-conn-item:hover .conn-del { opacity: 1; }
+    .saved-conn-item .conn-del:hover { color: var(--error); }
+    .no-conns { padding: 10px 14px; color: var(--text-muted); font-size: 11px; }
+
+    /* Table browser */
+    .table-list { padding: 0 8px; }
+    .table-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+      font-size: 12px;
+    }
+    .table-item:hover { background: rgba(255,255,255,0.05); }
+    .table-item .table-icon { font-size: 12px; color: var(--text-muted); }
+    .table-item .table-name { flex: 1; }
+    .table-item.view-item .table-icon { color: var(--accent2); }
+    .table-item .insert-btn {
+      background: none; border: none; color: var(--text-muted); font-size: 10px; padding: 1px 4px;
+      opacity: 0; border-radius: 3px; transition: all 0.15s;
+    }
+    .table-item:hover .insert-btn { opacity: 1; }
+    .table-item .insert-btn:hover { background: var(--bg-card); color: var(--text); }
+    .no-tables { padding: 10px 14px; color: var(--text-muted); font-size: 11px; }
+    .tables-loading { padding: 10px 14px; color: var(--text-muted); font-size: 11px; }
+
+    /* Schema modal overlay */
+    .schema-panel {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: none; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .schema-panel.open { display: flex; }
+    .schema-box {
+      background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+      width: 480px; max-height: 80vh; display: flex; flex-direction: column;
+    }
+    .schema-box-header {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .schema-box-header h3 { font-size: 14px; color: var(--accent); }
+    .schema-box-close { background: none; border: none; color: var(--text-muted); font-size: 18px; line-height: 1; }
+    .schema-box-close:hover { color: var(--text); }
+    .schema-box-body { overflow-y: auto; padding: 12px; flex: 1; }
+    .schema-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .schema-table th {
+      background: var(--bg-card); color: var(--text-muted); text-align: left;
+      padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600;
+    }
+    .schema-table td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .schema-table tr:hover td { background: rgba(255,255,255,0.03); }
+    .tag { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+    .tag-pk { background: rgba(233,69,96,0.2); color: var(--accent); }
+    .tag-fk { background: rgba(83,52,131,0.3); color: #9c7cdb; }
+    .tag-idx { background: rgba(255,152,0,0.2); color: var(--warning); }
+    .tag-nn { background: rgba(76,175,80,0.2); color: var(--success); }
+
+    /* ── Main Area ────────────────────────────────────────── */
+    #main {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-app);
+    }
+
+    /* Toolbar */
+    #toolbar {
+      padding: 8px 16px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    #toolbar .conn-badge {
+      background: var(--bg-card); border-radius: 4px; padding: 3px 10px;
+      font-size: 11px; color: var(--text-muted); border: 1px solid var(--border);
+    }
+    #toolbar .conn-badge.connected { color: var(--success); border-color: rgba(76,175,80,0.4); }
+    #toolbar-spacer { flex: 1; }
+    #history-btn { font-size: 16px; background: none; border: none; color: var(--text-muted); }
+    #history-btn:hover { color: var(--text); }
+
+    /* Editor pane */
+    #editor-pane {
+      flex-shrink: 0;
+      position: relative;
+      border-bottom: 1px solid var(--border);
+    }
+    .editor-toolbar {
+      padding: 6px 12px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .editor-toolbar span { font-size: 11px; color: var(--text-muted); }
+    .kbd { display: inline-block; padding: 1px 5px; background: var(--bg-card); border-radius: 3px; font-size: 10px; color: var(--text-muted); border: 1px solid var(--border); }
+    .CodeMirror {
+      height: 200px !important;
+      font-size: 13px !important;
+      font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace !important;
+      background: var(--bg-input) !important;
+      color: #f8f8f2 !important;
+      line-height: 1.6 !important;
+    }
+    .CodeMirror-scroll { background: var(--bg-input); }
+    .CodeMirror-gutters { background: var(--bg-panel) !important; border-right: 1px solid var(--border) !important; }
+    .CodeMirror-linenumber { color: var(--text-muted) !important; }
+
+    /* Resize handle */
+    #resize-handle {
+      height: 5px;
+      background: transparent;
+      cursor: ns-resize;
+      border-top: 1px solid var(--border);
+      transition: background 0.2s;
+    }
+    #resize-handle:hover { background: rgba(233,69,96,0.3); }
+
+    /* Results pane */
+    #results-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .results-toolbar {
+      padding: 6px 12px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .results-toolbar .stat {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      border-radius: 3px;
+      padding: 2px 8px;
+    }
+    .results-toolbar .stat span { color: var(--text); font-weight: 600; }
+    #results-toolbar-spacer { flex: 1; }
+    .tab-bar { display: flex; gap: 2px; }
+    .tab-btn {
+      padding: 3px 10px; border-radius: 4px; background: none;
+      border: 1px solid transparent; color: var(--text-muted); font-size: 12px;
+    }
+    .tab-btn:hover { background: var(--bg-card); }
+    .tab-btn.active { background: var(--bg-card); border-color: var(--border); color: var(--text); }
+
+    /* Result tabs container */
+    #result-tabs { flex-shrink: 0; }
+    .result-tab-headers {
+      display: flex; gap: 2px; padding: 4px 12px;
+      background: var(--bg-panel); border-bottom: 1px solid var(--border);
+    }
+    .result-tab-h {
+      padding: 3px 10px; border-radius: 4px 4px 0 0;
+      background: var(--bg-input); border: 1px solid var(--border); border-bottom: none;
+      color: var(--text-muted); font-size: 11px; cursor: pointer; transition: all 0.15s;
+    }
+    .result-tab-h:hover { color: var(--text); }
+    .result-tab-h.active { background: var(--bg-panel); color: var(--text); border-color: var(--accent); }
+
+    /* Table */
+    #table-container { flex: 1; overflow: auto; }
+    .result-grid { width: 100%; border-collapse: collapse; white-space: nowrap; }
+    .result-grid thead th {
+      position: sticky; top: 0; z-index: 2;
+      background: var(--bg-card); color: var(--text);
+      padding: 7px 10px; border-bottom: 2px solid var(--border);
+      font-weight: 600; font-size: 12px; text-align: left;
+      user-select: none; cursor: pointer;
+    }
+    .result-grid thead th:hover { background: #1a4a7a; }
+    .result-grid thead th .sort-icon { margin-left: 4px; color: var(--text-muted); font-size: 10px; }
+    .result-grid tbody tr { transition: background 0.1s; }
+    .result-grid tbody tr:hover td { background: rgba(255,255,255,0.04); }
+    .result-grid tbody tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+    .result-grid tbody tr:hover:nth-child(even) td { background: rgba(255,255,255,0.05); }
+    .result-grid td {
+      padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 12px; max-width: 300px; overflow: hidden; text-overflow: ellipsis;
+    }
+    .result-grid td.null-val { color: var(--text-muted); font-style: italic; }
+    .result-grid td.num-val { color: #8be9fd; text-align: right; }
+    .result-grid td.bool-val { color: #50fa7b; }
+    .resizable-col { position: relative; }
+    .col-resizer {
+      position: absolute; right: 0; top: 0; bottom: 0;
+      width: 4px; cursor: col-resize; background: transparent;
+    }
+    .col-resizer:hover, .col-resizer.resizing { background: var(--accent); }
+
+    /* Empty / error / loading states */
+    .state-msg {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; color: var(--text-muted); gap: 8px; padding: 40px;
+    }
+    .state-msg .icon { font-size: 40px; }
+    .state-msg .title { font-size: 14px; color: var(--text); }
+    .state-msg .sub { font-size: 12px; text-align: center; max-width: 400px; }
+    .state-msg.error-state { }
+    .state-msg.error-state .title { color: var(--error); }
+    .spinner {
+      width: 32px; height: 32px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Pagination */
+    #pagination {
+      padding: 6px 12px;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    #pagination .page-info { font-size: 11px; color: var(--text-muted); flex: 1; }
+    .page-btn {
+      background: var(--bg-card); border: 1px solid var(--border); color: var(--text);
+      border-radius: 4px; padding: 3px 10px; font-size: 12px;
+    }
+    .page-btn:hover { border-color: var(--accent); }
+    .page-btn:disabled { opacity: 0.4; cursor: default; }
+    #page-input {
+      width: 46px; background: var(--bg-input); border: 1px solid var(--border);
+      color: var(--text); border-radius: 4px; padding: 3px 6px; text-align: center;
+    }
+
+    /* History dropdown */
+    #history-panel {
+      position: fixed; right: 16px; top: 48px;
+      width: 480px; background: var(--bg-panel); border: 1px solid var(--border);
+      border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      z-index: 500; display: none;
+    }
+    #history-panel.open { display: block; }
+    .history-header {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .history-header h3 { font-size: 13px; }
+    .history-clear { background: none; border: none; color: var(--text-muted); font-size: 12px; }
+    .history-clear:hover { color: var(--error); }
+    .history-list { max-height: 340px; overflow-y: auto; }
+    .history-item {
+      padding: 8px 14px; border-bottom: 1px solid rgba(255,255,255,0.04);
+      cursor: pointer; transition: background 0.15s;
+    }
+    .history-item:hover { background: rgba(255,255,255,0.04); }
+    .history-item .h-sql {
+      font-family: 'Cascadia Code', monospace; font-size: 11px; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+    }
+    .history-item .h-meta { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+    .history-empty { padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px; }
+
+    /* Export modal */
+    #export-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: none; align-items: center; justify-content: center; z-index: 1000;
+    }
+    #export-modal.open { display: flex; }
+    .export-box {
+      background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+      width: 380px; padding: 20px;
+    }
+    .export-box h3 { margin-bottom: 16px; color: var(--accent); }
+    .export-box .form-row { margin-bottom: 12px; }
+
+    /* Toast */
+    #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+    .toast {
+      padding: 10px 16px; border-radius: 6px; font-size: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4); max-width: 320px;
+      animation: slideIn 0.2s ease; transition: opacity 0.3s;
+    }
+    .toast.success { background: rgba(76,175,80,0.9); color: #fff; }
+    .toast.error   { background: rgba(244,67,54,0.9);  color: #fff; }
+    .toast.info    { background: rgba(15,52,96,0.95);  color: var(--text); border: 1px solid var(--border); }
+    @keyframes slideIn { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+    /* ── Send Modal ────────────────────────────────────── */
+    .send-box {
+      background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+      width: 440px; padding: 20px; max-height: 80vh; overflow-y: auto;
+    }
+    .send-box h3 { margin-bottom: 16px; color: var(--accent); }
+    .send-box .form-row { margin-bottom: 10px; }
+    .send-type-row { display: flex; gap: 6px; margin-bottom: 12px; }
+    .send-type-btn {
+      flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border);
+      background: var(--bg-card); color: var(--text-muted); font-size: 12px; text-align: center;
+      transition: all 0.15s;
+    }
+    .send-type-btn:hover { border-color: var(--accent); color: var(--text); }
+    .send-type-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(233,69,96,0.1); }
+
+    /* ── Schedule Modal ────────────────────────────────── */
+    .sched-box {
+      background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+      width: 500px; padding: 20px; max-height: 85vh; overflow-y: auto;
+    }
+    .sched-box h3 { margin-bottom: 16px; color: var(--accent); }
+    .sched-box .form-row { margin-bottom: 10px; }
+    .cron-presets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+    .cron-preset {
+      padding: 2px 8px; border-radius: 3px; background: var(--bg-card);
+      border: 1px solid var(--border); color: var(--text-muted); font-size: 10px;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .cron-preset:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ── Schedule list ─────────────────────────────────── */
+    .sched-list { padding: 0 8px; }
+    .sched-item {
+      padding: 6px 8px; border-radius: 5px; margin-bottom: 4px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.02);
+    }
+    .sched-item .sched-name { font-weight: 600; font-size: 12px; }
+    .sched-item .sched-detail { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+    .sched-conn-label { color: #8be9fd; }
+    .sched-item .sched-log { font-size: 10px; margin-top: 3px; }
+    .sched-item .sched-log.success { color: var(--success); }
+    .sched-item .sched-log.failed { color: var(--error); }
+    .sched-item .sched-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .no-scheds { padding: 10px 14px; color: var(--text-muted); font-size: 11px; }
+
+    .schedule-log-box {
+      background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+      width: 620px; max-width: calc(100vw - 28px); max-height: 80vh; padding: 18px;
+      display: flex; flex-direction: column;
+    }
+    .schedule-log-box h3 { margin-bottom: 12px; color: var(--accent); }
+    .schedule-log-list { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+    .schedule-log-item { border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.02); padding: 8px 10px; }
+    .schedule-log-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; }
+    .schedule-log-meta { color: var(--text-muted); font-size: 10px; margin-top: 4px; }
+    .schedule-log-msg { font-size: 11px; margin-top: 4px; word-break: break-word; }
+    .schedule-log-status.success { color: var(--success); }
+    .schedule-log-status.failed { color: var(--error); }
+
+    /* ── SMTP settings form ────────────────────────────── */
+    .smtp-form { padding: 10px 14px; }
+    .conn-status.info { background: rgba(15,52,96,0.3); color: var(--text-muted); display: block; }
+    .wechat-robot-list { padding: 0 8px 8px; }
+    .wechat-robot-item {
+      padding: 6px 8px; border-radius: 5px; margin-bottom: 4px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.02);
+    }
+    .wechat-robot-name { font-weight: 600; font-size: 12px; }
+    .wechat-robot-url { font-size: 10px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wechat-robot-actions { display: flex; justify-content: flex-end; gap: 4px; margin-top: 4px; }
+
+    /* ── Modal generic ─────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: none; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .modal-overlay.open { display: flex; }
+
+    /* ── Toolbar send buttons ──────────────────────────── */
+    .toolbar-send-group { display: flex; gap: 4px; }
+  </style>
+</head>
+<body>
+
+<div id="auth-view">
+  <div class="auth-card">
+    <h2>数据库查询工具</h2>
+    <p>登录后仅显示当前账号的连接、邮箱、企微机器人、定时任务和执行日志。</p>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="auth-login-tab" onclick="setAuthMode('login')">登录</button>
+      <button class="auth-tab" id="auth-register-tab" onclick="setAuthMode('register')">注册</button>
+    </div>
+    <div class="form-row">
+      <label>账号</label>
+      <input type="text" id="auth-username" autocomplete="username" />
+    </div>
+    <div class="form-row">
+      <label>密码</label>
+      <input type="password" id="auth-password" autocomplete="current-password" />
+    </div>
+    <button class="btn btn-primary btn-block" id="auth-submit-btn" onclick="loginUser()">登录</button>
+    <div class="auth-message" id="auth-message"></div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <!-- ── Sidebar ──────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <span>🗄️</span>
+      <h1>数据库查询工具</h1>
+    </div>
+    <div class="sidebar-body">
+
+      <!-- New Connection accordion -->
+      <div class="section-header open" id="sec-conn-hdr" onclick="toggleSection('sec-conn')">
+        <span>新建连接</span>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="section-content open" id="sec-conn">
+        <div class="conn-form">
+          <div class="form-row">
+            <label>数据库类型</label>
+            <select id="db-type">
+              <option value="mysql">MySQL</option>
+              <option value="postgresql">PostgreSQL</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>主机</label>
+            <input type="text" id="db-host" placeholder="127.0.0.1" value="127.0.0.1" />
+          </div>
+          <div class="form-row-2">
+            <div class="form-row">
+              <label>端口</label>
+              <input type="number" id="db-port" placeholder="3306" value="3306" />
+            </div>
+            <div class="form-row">
+              <label>数据库</label>
+              <input type="text" id="db-name" placeholder="mydb" />
+            </div>
+          </div>
+          <div class="form-row">
+            <label>用户名</label>
+            <input type="text" id="db-user" placeholder="root" />
+          </div>
+          <div class="form-row">
+            <label>密码</label>
+            <input type="password" id="db-pass" placeholder="••••••••" />
+          </div>
+          <div class="form-row">
+            <label>连接名称（可选）</label>
+            <input type="text" id="db-label" placeholder="我的数据库" />
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-secondary" style="flex:1" onclick="testConnection()">测试</button>
+            <button class="btn btn-primary" style="flex:1" onclick="saveAndConnect()">连接</button>
+          </div>
+        </div>
+        <div class="conn-status" id="conn-status"></div>
+      </div>
+
+      <!-- Saved connections -->
+      <div class="section-header open" id="sec-saved-hdr" onclick="toggleSection('sec-saved')">
+        <span>已保存连接</span>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="section-content open" id="sec-saved">
+        <div class="saved-conn-list" id="saved-conn-list">
+          <div class="no-conns">暂无已保存连接</div>
+        </div>
+      </div>
+
+      <!-- Table browser -->
+      <div class="section-header open" id="sec-tables-hdr" onclick="toggleSection('sec-tables')">
+        <span>数据表</span>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="section-content open" id="sec-tables">
+        <div class="table-list" id="table-list">
+          <div class="no-tables">请先连接数据库以浏览表结构</div>
+        </div>
+      </div>
+
+      <!-- SMTP Settings -->
+      <div class="section-header" id="sec-smtp-hdr" onclick="toggleSection('sec-smtp')">
+        <span>邮件设置</span>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="section-content" id="sec-smtp">
+        <div class="smtp-form">
+          <div class="form-row">
+            <label>SMTP 服务器</label>
+            <input type="text" id="smtp-host" placeholder="smtp.example.com" />
+          </div>
+          <div class="form-row-2">
+            <div class="form-row">
+              <label>端口</label>
+              <input type="number" id="smtp-port" placeholder="465" value="465" />
+            </div>
+            <div class="form-row">
+              <label>SSL</label>
+              <select id="smtp-secure">
+                <option value="1">是</option>
+                <option value="0">否</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>用户名</label>
+            <input type="text" id="smtp-user" placeholder="user@example.com" />
+          </div>
+          <div class="form-row">
+            <label>密码</label>
+            <input type="password" id="smtp-pass" placeholder="••••••••" />
+          </div>
+          <div class="form-row-2">
+            <div class="form-row">
+              <label>发件人名称</label>
+              <input type="text" id="smtp-from-name" placeholder="数据库查询工具" value="数据库查询工具" />
+            </div>
+            <div class="form-row">
+              <label>发件人邮箱</label>
+              <input type="text" id="smtp-from-email" placeholder="user@example.com" />
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-secondary" style="flex:1" onclick="saveSmtpSettings()">保存</button>
+            <button class="btn btn-primary" style="flex:1" onclick="testSmtp()">测试</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- WeChat Robots -->
+      <div class="section-header" id="sec-wechat-hdr" onclick="toggleSection('sec-wechat')">
+        <span>企微机器人</span>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="section-content" id="sec-wechat">
+        <div class="smtp-form">
+          <div class="form-row">
+            <label>机器人名称</label>
+            <input type="text" id="wechat-robot-name" placeholder="日报群机器人" />
+          </div>
+          <div class="form-row">
+            <label>Webhook 地址</label>
+            <input type="text" id="wechat-robot-webhook" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx" />
+          </div>
+          <input type="hidden" id="wechat-robot-id" />
+          <div class="btn-row">
+            <button class="btn btn-secondary" style="flex:1" onclick="resetWechatRobotForm()">清空</button>
+            <button class="btn btn-primary" style="flex:1" onclick="saveWechatRobot()">保存</button>
+          </div>
+        </div>
+        <div class="wechat-robot-list" id="wechat-robot-list">
+          <div class="no-scheds">暂无企微机器人</div>
+        </div>
+      </div>
+
+      <!-- Scheduled Tasks -->
+      <div class="section-header" id="sec-sched-hdr" onclick="toggleSection('sec-sched')">
+        <span>定时任务</span>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="section-content" id="sec-sched">
+        <div style="padding:6px 14px">
+          <button class="btn btn-primary btn-sm btn-block" onclick="openScheduleModal()">+ 新建任务</button>
+        </div>
+        <div class="sched-list" id="sched-list">
+          <div class="no-scheds">暂无定时任务</div>
+        </div>
+      </div>
+
+    </div><!-- /sidebar-body -->
+  </aside>
+
+  <!-- ── Main ────────────────────────────────────────── -->
+  <main id="main">
+    <!-- Toolbar -->
+    <div id="toolbar">
+      <div class="conn-badge" id="toolbar-badge">未连接</div>
+      <div id="toolbar-spacer"></div>
+      <div class="conn-badge connected" id="user-badge"></div>
+      <button class="btn btn-secondary btn-sm" onclick="logoutUser()">退出</button>
+      <div class="toolbar-send-group">
+        <button class="btn btn-secondary btn-sm" onclick="openSendModal('email')" title="通过邮件发送">📧 邮件</button>
+        <button class="btn btn-secondary btn-sm" onclick="openSendModal('wechat')" title="发送到企微">💬 企微</button>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="openExportModal()" title="导出为 XLSX">📥 导出</button>
+      <button id="history-btn" title="查询历史" onclick="toggleHistory()">⏱</button>
+    </div>
+
+    <!-- Editor pane -->
+    <div id="editor-pane">
+      <div class="editor-toolbar">
+        <button class="btn btn-primary btn-sm" id="run-btn" onclick="runQuery()">▶ 执行</button>
+        <span class="kbd">Ctrl+Enter</span>
+        <span style="flex:1"></span>
+        <span>SQL 编辑器</span>
+        <button class="btn btn-secondary btn-sm" onclick="clearEditor()">清空</button>
+      </div>
+      <textarea id="sql-editor"></textarea>
+      <div id="resize-handle"></div>
+    </div>
+
+    <!-- Results -->
+    <div id="results-pane">
+      <div class="results-toolbar" id="results-toolbar">
+        <span class="stat" id="stat-rows">行数: <span>—</span></span>
+        <span class="stat" id="stat-time">耗时: <span>—</span></span>
+        <div id="results-toolbar-spacer"></div>
+      </div>
+      <div id="result-tabs"></div>
+      <div id="table-container">
+        <div class="state-msg">
+          <div class="icon">💡</div>
+          <div class="title">就绪</div>
+          <div class="sub">连接数据库并执行 SQL 查询以查看结果。<br>按 <strong>Ctrl+Enter</strong> 执行查询。</div>
+        </div>
+      </div>
+      <div id="pagination" style="display:none">
+        <span class="page-info" id="page-info"></span>
+        <button class="page-btn" id="btn-first" onclick="goPage(1)">«</button>
+        <button class="page-btn" id="btn-prev"  onclick="goPage(state.page - 1)">‹</button>
+        <input type="number" id="page-input" min="1" value="1" onchange="goPage(parseInt(this.value))" />
+        <span style="font-size:11px;color:var(--text-muted)">/ <span id="page-total">1</span></span>
+        <button class="page-btn" id="btn-next" onclick="goPage(state.page + 1)">›</button>
+        <button class="page-btn" id="btn-last"  onclick="goPage(state.totalPages)">»</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Schema modal -->
+<div class="schema-panel" id="schema-panel" onclick="closeSchema(event)">
+  <div class="schema-box">
+    <div class="schema-box-header">
+      <h3 id="schema-title">表结构</h3>
+      <button class="schema-box-close" onclick="closeSchemaBtn()">✕</button>
+    </div>
+    <div class="schema-box-body" id="schema-body"></div>
+  </div>
+</div>
+
+<!-- History panel -->
+<div id="history-panel">
+  <div class="history-header">
+    <h3>查询历史</h3>
+    <button class="history-clear" onclick="clearHistory()">清空</button>
+  </div>
+  <div class="history-list" id="history-list"></div>
+</div>
+
+<!-- Export modal -->
+<div id="export-modal" onclick="closeExportModal(event)">
+  <div class="export-box">
+    <h3>📥 导出为 XLSX</h3>
+    <div class="form-row">
+      <label>文件名</label>
+      <input type="text" id="export-filename" placeholder="query_result" value="query_result" />
+    </div>
+    <div class="form-row">
+      <label>工作表名</label>
+      <input type="text" id="export-sheetname" placeholder="Sheet1" value="Sheet1" />
+    </div>
+    <div class="form-row">
+      <label style="font-size:11px;color:var(--text-muted)">将导出全部数据（不受分页限制）。</label>
+    </div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeExportModalBtn()">取消</button>
+      <button class="btn btn-success" style="flex:1" onclick="doExport()">导出</button>
+    </div>
+  </div>
+</div>
+
+<!-- Send modal -->
+<div class="modal-overlay" id="send-modal" onclick="closeSendModal(event)">
+  <div class="send-box">
+    <h3>📤 发送查询结果</h3>
+    <div class="form-row">
+      <label>发送方式</label>
+      <div class="send-type-row">
+        <button class="send-type-btn active" data-type="email" onclick="setSendType('email')">📧 邮件</button>
+        <button class="send-type-btn" data-type="wechat" onclick="setSendType('wechat')">💬 企微</button>
+        <button class="send-type-btn" data-type="both" onclick="setSendType('both')">两者</button>
+      </div>
+    </div>
+    <div id="send-email-fields">
+      <div class="form-row">
+        <label>收件人邮箱</label>
+        <input type="text" id="send-to" placeholder="user@example.com" />
+      </div>
+      <div class="form-row">
+        <label>主题</label>
+        <input type="text" id="send-subject" placeholder="数据库查询结果" value="数据库查询结果" />
+      </div>
+    </div>
+    <div id="send-wechat-fields" style="display:none">
+      <div class="form-row">
+        <label>企微机器人</label>
+        <select id="send-wechat-robot"></select>
+        <label style="font-size:10px;color:var(--warning);margin-top:4px">请先在左侧“企微机器人”维护 Webhook 地址。</label>
+      </div>
+    </div>
+    <div class="form-row">
+      <label style="font-size:11px;color:var(--text-muted)">将发送完整结果集（不受分页限制）。</label>
+    </div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeSendModalBtn()">取消</button>
+      <button class="btn btn-success" style="flex:1" id="send-confirm-btn" onclick="doSend()">发送</button>
+    </div>
+  </div>
+</div>
+
+<!-- Schedule modal -->
+<div class="modal-overlay" id="schedule-modal" onclick="closeScheduleModal(event)">
+  <div class="sched-box">
+    <h3 id="schedule-modal-title">⏰ 新建定时任务</h3>
+    <div class="form-row">
+      <label>任务名称</label>
+      <input type="text" id="sched-name" placeholder="每日数据报告" />
+    </div>
+    <div class="form-row">
+      <label>绑定数据库连接</label>
+      <select id="sched-connection"></select>
+    </div>
+    <div class="form-row">
+      <label>SQL 查询</label>
+      <textarea id="sched-sql" rows="4" style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:6px 8px;font-family:'Cascadia Code',monospace;font-size:12px;resize:vertical" placeholder="SELECT * FROM users WHERE created_at >= CURDATE()"></textarea>
+    </div>
+    <div class="form-row">
+      <label>Cron 表达式</label>
+      <div class="cron-presets">
+        <button class="cron-preset" onclick="setCronPreset('0 9 * * *')">每天 9:00</button>
+        <button class="cron-preset" onclick="setCronPreset('0 * * * *')">每小时</button>
+        <button class="cron-preset" onclick="setCronPreset('*/30 * * * *')">每 30 分钟</button>
+        <button class="cron-preset" onclick="setCronPreset('0 9 * * 1')">每周一 9:00</button>
+        <button class="cron-preset" onclick="setCronPreset('0 9 1 * *')">每月 1 号 9:00</button>
+      </div>
+      <input type="text" id="sched-cron" placeholder="0 9 * * *" />
+    </div>
+    <div class="form-row">
+      <label>发送方式</label>
+      <select id="sched-send-type" onchange="toggleSchedSendFields()">
+        <option value="email">邮件</option>
+        <option value="wechat">企微</option>
+        <option value="both">两者</option>
+      </select>
+    </div>
+    <div id="sched-email-fields">
+      <div class="form-row">
+        <label>收件人邮箱</label>
+        <input type="text" id="sched-email-to" placeholder="user@example.com" />
+      </div>
+      <div class="form-row">
+        <label>邮件主题（可选）</label>
+        <input type="text" id="sched-email-subject" placeholder="数据库查询报告" />
+      </div>
+    </div>
+    <div id="sched-wechat-fields" style="display:none">
+      <div class="form-row">
+        <label>企微机器人</label>
+        <select id="sched-wechat-robot"></select>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeScheduleModalBtn()">取消</button>
+      <button class="btn btn-success" style="flex:1" id="schedule-save-btn" onclick="saveSchedule()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- Schedule execution logs modal -->
+<div class="modal-overlay" id="schedule-log-modal" onclick="closeScheduleLogModal(event)">
+  <div class="schedule-log-box">
+    <h3 id="schedule-log-title">执行日志</h3>
+    <div class="schedule-log-list" id="schedule-log-list">
+      <div class="no-scheds">暂无执行日志</div>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeScheduleLogModalBtn()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════════ */
+const API_BASE = window.location.origin;
+const PAGE_SIZE = 100;
+
+const state = {
+  user: null,
+  savedConns: [],
+
+  // current connection config
+  conn: null,         // { type, host, port, database, username, password, label }
+  activeConnId: null, // id in savedConns
+
+  // query results
+  resultSets: [],     // array of { sql, columns, rows, rowCount, isDml }
+  activeTab: 0,
+
+  // pagination (for active tab)
+  page: 1,
+  totalPages: 1,
+
+  // sort
+  sortCol: null,
+  sortDir: 'asc',
+
+  // query history
+  history: [],        // array of { sql, ts, duration }
+
+  // tables
+  tables: [],
+
+  // WeChat robots
+  wechatRobots: [],
+
+  // scheduled task currently being edited
+  editingScheduleId: null,
+  editingScheduleConnection: null,
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   LOCAL STORAGE HELPERS
+═══════════════════════════════════════════════════════════════ */
+const LS_CONNS   = 'dbt_connections';
+const LS_HISTORY = 'dbt_history';
+
+function loadSavedConns() {
+  return state.savedConns || [];
+}
+function saveSavedConns(list) {
+  state.savedConns = list || [];
+}
+function historyKey() {
+  return state.user ? `${LS_HISTORY}_${state.user.id}` : LS_HISTORY;
+}
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(historyKey()) || '[]'); } catch { return []; }
+}
+function saveHistory(list) {
+  localStorage.setItem(historyKey(), JSON.stringify(list));
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CODEMIRROR SETUP
+═══════════════════════════════════════════════════════════════ */
+let editor;
+window.addEventListener('DOMContentLoaded', async () => {
+  editor = CodeMirror.fromTextArea(document.getElementById('sql-editor'), {
+    mode: 'text/x-sql',
+    theme: 'dracula',
+    lineNumbers: true,
+    matchBrackets: true,
+    autoCloseBrackets: true,
+    indentWithTabs: false,
+    tabSize: 2,
+    lineWrapping: false,
+    extraKeys: {
+      'Ctrl-Enter': runQuery,
+      'Cmd-Enter':  runQuery,
+      'Ctrl-/':     (cm) => cm.execCommand('toggleComment'),
+    },
+    hintOptions: { completeSingle: false },
+  });
+  editor.setSize(null, 200);
+
+  setupResizeHandle();
+  await checkAuth();
+
+  // update port hint when db type changes
+  document.getElementById('db-type').addEventListener('change', function() {
+    document.getElementById('db-port').value = this.value === 'mysql' ? '3306' : '5432';
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   ACCORDION
+═══════════════════════════════════════════════════════════════ */
+async function checkAuth() {
+  try {
+    const resp = await fetch(API_BASE + '/api/auth/me', { credentials: 'same-origin' });
+    if (!resp.ok) {
+      showAuth();
+      return;
+    }
+    const data = await resp.json();
+    if (data.success && data.user) {
+      await setAuthenticatedUser(data.user);
+    } else {
+      showAuth();
+    }
+  } catch (e) {
+    showAuth(e.message);
+  }
+}
+
+function setAuthMode(mode) {
+  const isRegister = mode === 'register';
+  document.getElementById('auth-login-tab').classList.toggle('active', !isRegister);
+  document.getElementById('auth-register-tab').classList.toggle('active', isRegister);
+  const btn = document.getElementById('auth-submit-btn');
+  btn.textContent = isRegister ? '注册' : '登录';
+  btn.onclick = isRegister ? registerUser : loginUser;
+  document.getElementById('auth-password').autocomplete = isRegister ? 'new-password' : 'current-password';
+  setAuthMessage('');
+}
+
+function setAuthMessage(message, type = 'error') {
+  const el = document.getElementById('auth-message');
+  el.textContent = message || '';
+  el.className = `auth-message ${type === 'success' ? 'success' : ''}`;
+}
+
+function showAuth(message = '') {
+  state.user = null;
+  document.getElementById('auth-view').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  if (message) setAuthMessage(message);
+}
+
+async function setAuthenticatedUser(user) {
+  state.user = user;
+  document.getElementById('auth-view').style.display = 'none';
+  document.getElementById('app').style.display = 'grid';
+  document.getElementById('user-badge').textContent = user.username;
+  await loadUserData();
+}
+
+async function loadUserData() {
+  state.conn = null;
+  state.activeConnId = null;
+  state.tables = [];
+  state.resultSets = [];
+  state.activeTab = 0;
+  state.history = loadHistory();
+  document.getElementById('toolbar-badge').textContent = '未连接';
+  document.getElementById('toolbar-badge').className = 'conn-badge';
+  document.getElementById('result-tabs').innerHTML = '';
+  document.getElementById('pagination').style.display = 'none';
+  document.querySelector('#stat-rows span').textContent = '-';
+  document.querySelector('#stat-time span').textContent = '-';
+  document.getElementById('table-container').innerHTML =
+    '<div class="state-msg"><div class="icon">💡</div><div class="title">就绪</div><div class="sub">连接数据库并执行 SQL 查询以查看结果。</div></div>';
+  await refreshSavedConns();
+  renderHistoryList();
+  await Promise.all([loadSmtpSettings(), loadWechatRobots(), loadSchedules()]);
+}
+
+async function submitAuth(path) {
+  const username = document.getElementById('auth-username').value.trim();
+  const password = document.getElementById('auth-password').value;
+  if (!username || !password) {
+    setAuthMessage('请输入账号和密码');
+    return;
+  }
+  try {
+    const resp = await fetch(API_BASE + path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.success) {
+      setAuthMessage(data.error || `请求失败: ${resp.status}`);
+      return;
+    }
+    await setAuthenticatedUser(data.user);
+  } catch (e) {
+    setAuthMessage(e.message);
+  }
+}
+
+function loginUser() {
+  return submitAuth('/api/auth/login');
+}
+
+function registerUser() {
+  return submitAuth('/api/auth/register');
+}
+
+async function logoutUser() {
+  try {
+    await fetch(API_BASE + '/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+  } catch {}
+  state.user = null;
+  state.conn = null;
+  state.activeConnId = null;
+  state.savedConns = [];
+  state.wechatRobots = [];
+  state.editingScheduleId = null;
+  state.editingScheduleConnection = null;
+  document.getElementById('auth-password').value = '';
+  showAuth();
+}
+
+function toggleSection(id) {
+  const hdr = document.getElementById(id + '-hdr');
+  const body = document.getElementById(id);
+  hdr.classList.toggle('open');
+  body.classList.toggle('open');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CONNECTION MANAGEMENT
+═══════════════════════════════════════════════════════════════ */
+function getFormConn() {
+  return {
+    type:     document.getElementById('db-type').value,
+    host:     document.getElementById('db-host').value.trim(),
+    port:     document.getElementById('db-port').value.trim(),
+    database: document.getElementById('db-name').value.trim(),
+    username: document.getElementById('db-user').value.trim(),
+    password: document.getElementById('db-pass').value,
+    label:    document.getElementById('db-label').value.trim(),
+  };
+}
+
+function showConnStatus(msg, type) {
+  const el = document.getElementById('conn-status');
+  el.className = 'conn-status ' + type;
+  el.textContent = msg;
+}
+
+async function testConnection() {
+  const cfg = getFormConn();
+  if (!cfg.host || !cfg.username) { showToast('请填写主机和用户名', 'error'); return; }
+  showConnStatus('正在测试连接…', 'info');
+  try {
+    const res = await apiFetch('/api/connect', 'POST', cfg);
+    if (res.success) {
+      showConnStatus(`✓ 连接成功，耗时 ${res.duration}ms`, 'success');
+    } else {
+      showConnStatus(`✗ ${res.error}`, 'error');
+    }
+  } catch (e) {
+    showConnStatus(`✗ ${e.message}`, 'error');
+  }
+}
+
+async function refreshSavedConns() {
+  const res = await apiFetch('/api/connections');
+  state.savedConns = res.connections || [];
+  renderSavedConns();
+  return state.savedConns;
+}
+
+async function saveAndConnect() {
+  const cfg = getFormConn();
+  if (!cfg.host || !cfg.username) { showToast('请填写主机和用户名', 'error'); return; }
+
+  showConnStatus('正在连接…', 'info');
+  try {
+    const res = await apiFetch('/api/connect', 'POST', cfg);
+    if (!res.success) {
+      showConnStatus(`✗ ${res.error}`, 'error');
+      return;
+    }
+
+    // save to list
+    const label = cfg.label || `${cfg.type}://${cfg.host}/${cfg.database || '*'}`;
+    const saved = await apiFetch('/api/connections', 'POST', { ...cfg, label });
+    const entry = saved.connection || { ...cfg, label };
+
+    setActiveConn(entry);
+    await refreshSavedConns();
+    showConnStatus(`✓ 已连接 — ${label}`, 'success');
+    showToast(`已连接到 ${label}`, 'success');
+    await loadTables();
+  } catch (e) {
+    showConnStatus(`✗ ${e.message}`, 'error');
+  }
+}
+
+function getConnectionLabel(conn) {
+  if (!conn) return '';
+  return conn.label || `${conn.type}://${conn.host}/${conn.database || '*'}`;
+}
+
+function getConnectionKey(conn) {
+  if (!conn) return '';
+  return [
+    conn.type || '',
+    conn.host || '',
+    conn.port || '',
+    conn.database || '',
+    conn.username || '',
+  ].join('|');
+}
+
+function setActiveConn(entry) {
+  state.conn = entry;
+  state.activeConnId = entry.id;
+  const badge = document.getElementById('toolbar-badge');
+  badge.textContent = `${entry.type} • ${entry.host}/${entry.database || '*'}`;
+  badge.className = 'conn-badge connected';
+}
+
+function renderSavedConns() {
+  const conns = loadSavedConns();
+  const el = document.getElementById('saved-conn-list');
+  if (conns.length === 0) {
+    el.innerHTML = '<div class="no-conns">暂无已保存连接</div>';
+    return;
+  }
+  el.innerHTML = conns.map(c => {
+    const icon = c.type === 'mysql' ? '🐬' : '🐘';
+    const active = c.id === state.activeConnId ? ' active' : '';
+    return `<div class="saved-conn-item${active}" onclick="switchConn('${c.id}')">
+      <span class="conn-icon">${icon}</span>
+      <div class="conn-info">
+        <div class="conn-name">${escapeHtml(c.label)}</div>
+        <div class="conn-detail">${escapeHtml(c.host)}:${c.port || '?'}/${escapeHtml(c.database || '*')}</div>
+      </div>
+      <button class="conn-del" title="删除" onclick="deleteConn(event,'${c.id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function switchConn(id) {
+  const conns = loadSavedConns();
+  const entry = conns.find(c => c.id === id);
+  if (!entry) return;
+
+  try {
+    const res = await apiFetch('/api/connect', 'POST', entry);
+    if (!res.success) { showToast(`连接失败: ${res.error}`, 'error'); return; }
+    setActiveConn(entry);
+    renderSavedConns();
+    showToast(`已切换到 ${entry.label}`, 'success');
+    await loadTables();
+  } catch (e) {
+    showToast(`错误: ${e.message}`, 'error');
+  }
+}
+
+async function deleteConn(evt, id) {
+  evt.stopPropagation();
+  try {
+    await apiFetch(`/api/connections/${id}`, 'DELETE');
+  } catch (e) {
+    showToast(`删除失败: ${e.message}`, 'error');
+    return;
+  }
+  if (state.activeConnId === id) {
+    state.conn = null;
+    state.activeConnId = null;
+    document.getElementById('toolbar-badge').textContent = '未连接';
+    document.getElementById('toolbar-badge').className = 'conn-badge';
+  }
+  await refreshSavedConns();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TABLE BROWSER
+═══════════════════════════════════════════════════════════════ */
+async function loadTables() {
+  if (!state.conn) return;
+  const el = document.getElementById('table-list');
+  el.innerHTML = '<div class="tables-loading">加载中…</div>';
+
+  try {
+    const params = new URLSearchParams({
+      type: state.conn.type, host: state.conn.host, port: state.conn.port || '',
+      database: state.conn.database || '', username: state.conn.username, password: state.conn.password || '',
+    });
+    const res = await apiFetch(`/api/tables?${params}`);
+    if (!res.success) { el.innerHTML = `<div class="no-tables">错误: ${escapeHtml(res.error)}</div>`; return; }
+    state.tables = res.tables;
+    renderTableList(res.tables);
+  } catch (e) {
+    el.innerHTML = `<div class="no-tables">错误: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderTableList(tables) {
+  const el = document.getElementById('table-list');
+  if (!tables || tables.length === 0) {
+    el.innerHTML = '<div class="no-tables">未找到数据表</div>';
+    return;
+  }
+  el.innerHTML = tables.map(t => {
+    const isView = t.type === 'view';
+    const icon = isView ? '👁' : '📋';
+    const cls = isView ? 'table-item view-item' : 'table-item';
+    return `<div class="${cls}">
+      <span class="table-icon">${icon}</span>
+      <span class="table-name">${escapeHtml(t.name)}</span>
+      <button class="insert-btn" title="Insert SELECT" onclick="insertSelect('${escapeHtml(t.name)}')">SELECT</button>
+      <button class="insert-btn" title="View schema" onclick="viewSchema('${escapeHtml(t.name)}')">ⓘ</button>
+    </div>`;
+  }).join('');
+}
+
+function insertSelect(tableName) {
+  const quote = state.conn && state.conn.type === 'postgresql' ? '"' : '`';
+  const sql = `SELECT * FROM ${quote}${tableName}${quote} LIMIT 100;`;
+  editor.setValue(sql);
+  editor.focus();
+}
+
+async function viewSchema(tableName) {
+  if (!state.conn) { showToast('未连接数据库', 'error'); return; }
+  const params = new URLSearchParams({
+    type: state.conn.type, host: state.conn.host, port: state.conn.port || '',
+    database: state.conn.database || '', username: state.conn.username, password: state.conn.password || '',
+  });
+  try {
+    const res = await apiFetch(`/api/table/${encodeURIComponent(tableName)}/schema?${params}`);
+    if (!res.success) { showToast(`错误: ${res.error}`, 'error'); return; }
+    renderSchema(tableName, res.columns);
+  } catch (e) {
+    showToast(`错误: ${e.message}`, 'error');
+  }
+}
+
+function renderSchema(tableName, columns) {
+  document.getElementById('schema-title').textContent = `表结构: ${tableName}`;
+  const rows = columns.map(c => {
+    const keyTag = c.key === 'PRI' ? '<span class="tag tag-pk">PK</span>'
+                  : c.key === 'MUL' ? '<span class="tag tag-fk">IDX</span>'
+                  : '';
+    const nullTag = !c.nullable ? '<span class="tag tag-nn">NN</span>' : '';
+    return `<tr>
+      <td>${escapeHtml(c.name)}</td>
+      <td style="color:#8be9fd">${escapeHtml(c.type)}</td>
+      <td>${keyTag}${nullTag}</td>
+      <td style="color:var(--text-muted)">${c.default !== null && c.default !== undefined ? escapeHtml(String(c.default)) : ''}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('schema-body').innerHTML = `
+    <table class="schema-table">
+      <thead><tr><th>列名</th><th>类型</th><th>标志</th><th>默认值</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  document.getElementById('schema-panel').classList.add('open');
+}
+
+function closeSchema(e) {
+  if (e.target === document.getElementById('schema-panel')) closeSchemaBtn();
+}
+function closeSchemaBtn() {
+  document.getElementById('schema-panel').classList.remove('open');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   QUERY EXECUTION
+═══════════════════════════════════════════════════════════════ */
+async function runQuery() {
+  const sql = editor.getValue().trim();
+  if (!sql) { showToast('请输入 SQL 查询语句', 'error'); return; }
+  if (!state.conn) { showToast('请先连接数据库', 'error'); return; }
+
+  setRunning(true);
+  showLoading();
+
+  try {
+    const payload = { ...state.conn, sql };
+    const start = performance.now();
+    const res = await apiFetch('/api/query', 'POST', payload);
+    const elapsed = Math.round(performance.now() - start);
+
+    if (!res.success) {
+      setRunning(false);
+      showError(res.error, res.code, res.detail);
+      addHistory(sql, elapsed, false);
+      return;
+    }
+
+    addHistory(sql, res.duration || elapsed, true);
+    state.resultSets = res.results || [];
+    state.activeTab = 0;
+    state.sortCol = null;
+    state.sortDir = 'asc';
+
+    // update stats
+    const lastResult = state.resultSets[state.resultSets.length - 1] || {};
+    const totalRows = state.resultSets.reduce((s, r) => s + r.rowCount, 0);
+    document.querySelector('#stat-rows span').textContent = totalRows.toLocaleString();
+    document.querySelector('#stat-time span').textContent = `${res.duration || elapsed}ms`;
+
+    renderResultTabs();
+    setRunning(false);
+  } catch (e) {
+    setRunning(false);
+    showError(e.message);
+  }
+}
+
+function setRunning(flag) {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = flag;
+  btn.textContent = flag ? '⏳ 执行中…' : '▶ 执行';
+}
+
+function showLoading() {
+  document.getElementById('table-container').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div><div class="sub">正在执行查询…</div></div>';
+  document.getElementById('pagination').style.display = 'none';
+  document.getElementById('result-tabs').innerHTML = '';
+}
+
+function showError(msg, code, detail) {
+  let html = `<div class="state-msg error-state">
+    <div class="icon">⚠️</div>
+    <div class="title">查询错误</div>
+    <div class="sub">${escapeHtml(msg)}`;
+  if (code) html += `<br><small style="color:var(--text-muted)">${escapeHtml(String(code))}</small>`;
+  if (detail) html += `<br><small style="color:var(--text-muted)">${escapeHtml(String(detail))}</small>`;
+  html += `</div></div>`;
+  document.getElementById('table-container').innerHTML = html;
+  document.getElementById('pagination').style.display = 'none';
+  document.getElementById('result-tabs').innerHTML = '';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RESULT TABS
+═══════════════════════════════════════════════════════════════ */
+function renderResultTabs() {
+  const tabsEl = document.getElementById('result-tabs');
+  if (state.resultSets.length <= 1) {
+    tabsEl.innerHTML = '';
+  } else {
+    const headers = state.resultSets.map((r, i) => {
+      const active = i === state.activeTab ? ' active' : '';
+      return `<button class="result-tab-h${active}" onclick="switchTab(${i})">
+        #${i + 1} (${r.rowCount} 行)
+      </button>`;
+    }).join('');
+    tabsEl.innerHTML = `<div class="result-tab-headers">${headers}</div>`;
+  }
+  renderActiveResult();
+}
+
+function switchTab(idx) {
+  state.activeTab = idx;
+  state.page = 1;
+  state.sortCol = null;
+  state.sortDir = 'asc';
+  renderResultTabs();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RESULT RENDERING
+═══════════════════════════════════════════════════════════════ */
+function renderActiveResult() {
+  const rs = state.resultSets[state.activeTab];
+  if (!rs) return;
+
+  if (rs.isDml) {
+    renderTable(rs.columns, rs.rows);
+    document.getElementById('pagination').style.display = 'none';
+    return;
+  }
+
+  // apply sort
+  let rows = [...rs.rows];
+  if (state.sortCol !== null) {
+    const col = state.sortCol;
+    rows.sort((a, b) => {
+      const av = a[col]; const bv = b[col];
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      const an = Number(av); const bn = Number(bv);
+      const cmp = (!isNaN(an) && !isNaN(bn)) ? an - bn : String(av).localeCompare(String(bv));
+      return state.sortDir === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  // pagination
+  const total = rows.length;
+  state.totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  state.page = Math.min(state.page, state.totalPages);
+  const start = (state.page - 1) * PAGE_SIZE;
+  const pageRows = rows.slice(start, start + PAGE_SIZE);
+
+  renderTable(rs.columns, pageRows);
+
+  if (total > PAGE_SIZE) {
+    document.getElementById('pagination').style.display = 'flex';
+    document.getElementById('page-info').textContent =
+      `第 ${start + 1}–${Math.min(start + PAGE_SIZE, total)} 行，共 ${total.toLocaleString()} 行`;
+    document.getElementById('page-total').textContent = state.totalPages;
+    document.getElementById('page-input').value = state.page;
+    document.getElementById('btn-first').disabled = state.page === 1;
+    document.getElementById('btn-prev').disabled  = state.page === 1;
+    document.getElementById('btn-next').disabled  = state.page === state.totalPages;
+    document.getElementById('btn-last').disabled  = state.page === state.totalPages;
+  } else {
+    document.getElementById('pagination').style.display = 'none';
+  }
+}
+
+function renderTable(columns, rows) {
+  if (!columns || columns.length === 0) {
+    document.getElementById('table-container').innerHTML =
+      '<div class="state-msg"><div class="icon">✅</div><div class="title">查询执行成功</div><div class="sub">无返回结果集。</div></div>';
+    return;
+  }
+
+  const thead = `<thead><tr>${columns.map((c, i) => {
+    const sortIcon = state.sortCol === c
+      ? (state.sortDir === 'asc' ? ' ▲' : ' ▼')
+      : ' ⇅';
+    return `<th class="resizable-col" onclick="sortBy('${escapeHtml(c)}')">${escapeHtml(c)}<span class="sort-icon">${sortIcon}</span><div class="col-resizer" onmousedown="startColResize(event,${i})"></div></th>`;
+  }).join('')}</tr></thead>`;
+
+  const tbody = `<tbody>${rows.map(row => {
+    const cells = columns.map(col => {
+      const val = row[col];
+      if (val === null || val === undefined) return `<td class="null-val">NULL</td>`;
+      if (typeof val === 'boolean') return `<td class="bool-val">${val}</td>`;
+      const num = Number(val);
+      if (typeof val === 'number' || (!isNaN(num) && val !== '')) {
+        return `<td class="num-val">${escapeHtml(String(val))}</td>`;
+      }
+      return `<td title="${escapeHtml(String(val))}">${escapeHtml(String(val))}</td>`;
+    }).join('');
+    return `<tr>${cells}</tr>`;
+  }).join('')}</tbody>`;
+
+  document.getElementById('table-container').innerHTML =
+    `<table class="result-grid">${thead}${tbody}</table>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SORT
+═══════════════════════════════════════════════════════════════ */
+function sortBy(col) {
+  if (state.sortCol === col) {
+    state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.sortCol = col;
+    state.sortDir = 'asc';
+  }
+  state.page = 1;
+  renderActiveResult();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PAGINATION
+═══════════════════════════════════════════════════════════════ */
+function goPage(n) {
+  if (n < 1 || n > state.totalPages) return;
+  state.page = n;
+  renderActiveResult();
+  document.getElementById('table-container').scrollTop = 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COLUMN RESIZE
+═══════════════════════════════════════════════════════════════ */
+function startColResize(evt, colIdx) {
+  evt.stopPropagation();
+  evt.preventDefault();
+  const table = document.querySelector('.result-grid');
+  if (!table) return;
+  const th = table.querySelectorAll('thead th')[colIdx];
+  if (!th) return;
+  const startX = evt.clientX;
+  const startW = th.offsetWidth;
+  const resizer = evt.target;
+  resizer.classList.add('resizing');
+
+  function onMove(e) {
+    th.style.width = Math.max(50, startW + e.clientX - startX) + 'px';
+    th.style.minWidth = th.style.width;
+  }
+  function onUp() {
+    resizer.classList.remove('resizing');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EDITOR RESIZE HANDLE
+═══════════════════════════════════════════════════════════════ */
+function setupResizeHandle() {
+  const handle = document.getElementById('resize-handle');
+  const pane = document.getElementById('editor-pane');
+  let startY = 0, startH = 0;
+
+  handle.addEventListener('mousedown', e => {
+    startY = e.clientY;
+    startH = editor.getWrapperElement().offsetHeight;
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  function onMove(e) {
+    const newH = Math.max(80, Math.min(600, startH + e.clientY - startY));
+    editor.setSize(null, newH);
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HISTORY
+═══════════════════════════════════════════════════════════════ */
+function addHistory(sql, duration, success) {
+  const entry = { sql: sql.trim(), ts: Date.now(), duration, success };
+  state.history.unshift(entry);
+  if (state.history.length > 20) state.history = state.history.slice(0, 20);
+  saveHistory(state.history);
+}
+
+function toggleHistory() {
+  const panel = document.getElementById('history-panel');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) renderHistoryList();
+
+  // close on click outside
+  if (panel.classList.contains('open')) {
+    setTimeout(() => {
+      document.addEventListener('click', closeHistoryOutside, { once: true, capture: true });
+    }, 0);
+  }
+}
+
+function closeHistoryOutside(e) {
+  const panel = document.getElementById('history-panel');
+  if (!panel.contains(e.target) && e.target.id !== 'history-btn') {
+    panel.classList.remove('open');
+  }
+}
+
+function renderHistoryList() {
+  const el = document.getElementById('history-list');
+  if (state.history.length === 0) {
+    el.innerHTML = '<div class="history-empty">暂无查询历史</div>';
+    return;
+  }
+  el.innerHTML = state.history.map((h, i) => {
+    const dt = new Date(h.ts);
+    const timeStr = dt.toLocaleTimeString();
+    const status = h.success ? '✅' : '❌';
+    return `<div class="history-item" onclick="useHistory(${i})">
+      <div class="h-sql">${status} ${escapeHtml(h.sql.replace(/\s+/g, ' ').substring(0, 120))}</div>
+      <div class="h-meta">${timeStr} • ${h.duration}ms</div>
+    </div>`;
+  }).join('');
+}
+
+function useHistory(idx) {
+  const entry = state.history[idx];
+  if (!entry) return;
+  editor.setValue(entry.sql);
+  editor.focus();
+  document.getElementById('history-panel').classList.remove('open');
+}
+
+function clearHistory() {
+  state.history = [];
+  saveHistory([]);
+  renderHistoryList();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EXPORT
+═══════════════════════════════════════════════════════════════ */
+function openExportModal() {
+  if (state.resultSets.length === 0) { showToast('暂无结果可导出', 'error'); return; }
+  const dt = new Date();
+  const stamp = `${dt.getFullYear()}${String(dt.getMonth()+1).padStart(2,'0')}${String(dt.getDate()).padStart(2,'0')}_${String(dt.getHours()).padStart(2,'0')}${String(dt.getMinutes()).padStart(2,'0')}`;
+  document.getElementById('export-filename').value = `query_result_${stamp}`;
+  document.getElementById('export-modal').classList.add('open');
+}
+
+function closeExportModal(e) {
+  if (e.target === document.getElementById('export-modal')) closeExportModalBtn();
+}
+function closeExportModalBtn() {
+  document.getElementById('export-modal').classList.remove('open');
+}
+
+function doExport() {
+  const rs = state.resultSets[state.activeTab];
+  if (!rs || !rs.columns) { showToast('暂无数据可导出', 'error'); return; }
+
+  const filename = (document.getElementById('export-filename').value.trim() || 'query_result') + '.xlsx';
+  const sheetName = (document.getElementById('export-sheetname').value.trim() || 'Sheet1').substring(0, 31);
+
+  try {
+    // Build worksheet data
+    const wsData = [rs.columns.map(String)];  // header row
+    for (const row of rs.rows) {
+      wsData.push(rs.columns.map(col => {
+        const v = row[col];
+        if (v === null || v === undefined) return '';
+        if (typeof v === 'object') return JSON.stringify(v);
+        return v;
+      }));
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Auto column widths
+    const colWidths = rs.columns.map((col, ci) => {
+      const maxLen = Math.max(
+        col.length,
+        ...wsData.slice(1).map(r => String(r[ci] ?? '').length).slice(0, 200)
+      );
+      return { wch: Math.min(50, Math.max(8, maxLen + 2)) };
+    });
+    ws['!cols'] = colWidths;
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+    // Use explicit Blob download to ensure .xlsx extension is preserved
+    const wbOut = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    closeExportModalBtn();
+    showToast(`已导出 ${rs.rows.length} 行到 ${filename}`, 'success');
+  } catch (e) {
+    showToast(`导出失败: ${e.message}`, 'error');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CLEAR EDITOR
+═══════════════════════════════════════════════════════════════ */
+function clearEditor() {
+  editor.setValue('');
+  editor.focus();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   API HELPER
+═══════════════════════════════════════════════════════════════ */
+async function apiFetch(path, method = 'GET', body = null) {
+  const opts = {
+    method,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const resp = await fetch(API_BASE + path, opts);
+  if (!resp.ok) {
+    const text = await resp.text();
+    if (resp.status === 401) {
+      showAuth('登录已失效，请重新登录');
+    }
+    throw new Error(`HTTP ${resp.status}: ${text}`);
+  }
+  return resp.json();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════════════════════ */
+function showToast(msg, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+  }, 3500);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   UTILS
+═══════════════════════════════════════════════════════════════ */
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SEND MODAL
+═══════════════════════════════════════════════════════════════ */
+let currentSendType = 'email';
+
+function openSendModal(type) {
+  if (!state.conn) { showToast('请先连接数据库', 'error'); return; }
+  if (state.resultSets.length === 0) { showToast('暂无查询结果可发送', 'error'); return; }
+  renderWechatRobotSelects();
+  setSendType(type || 'email');
+  document.getElementById('send-modal').classList.add('open');
+}
+
+function setSendType(type) {
+  currentSendType = type;
+  document.querySelectorAll('.send-type-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.type === type);
+  });
+  document.getElementById('send-email-fields').style.display = (type === 'email' || type === 'both') ? 'block' : 'none';
+  document.getElementById('send-wechat-fields').style.display = (type === 'wechat' || type === 'both') ? 'block' : 'none';
+}
+
+function closeSendModal(e) {
+  if (e.target === document.getElementById('send-modal')) closeSendModalBtn();
+}
+function closeSendModalBtn() {
+  document.getElementById('send-modal').classList.remove('open');
+}
+
+async function doSend() {
+  if (!state.conn) { showToast('未连接数据库', 'error'); return; }
+  const rs = state.resultSets[state.activeTab];
+  if (!rs || !rs.columns) { showToast('暂无数据可发送', 'error'); return; }
+
+  const to = document.getElementById('send-to').value.trim();
+  const subject = document.getElementById('send-subject').value.trim() || 'DB Query Result';
+  const sendWechatRobot = getSelectedWechatRobot('send-wechat-robot');
+  const sql = editor.getValue().trim();
+
+  if ((currentSendType === 'email' || currentSendType === 'both') && !to) {
+    showToast('请输入收件人邮箱', 'error'); return;
+  }
+  if ((currentSendType === 'wechat' || currentSendType === 'both') && !sendWechatRobot) {
+    showToast('请选择企微机器人', 'error'); return;
+  }
+
+  const confirmBtn = document.getElementById('send-confirm-btn');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = '发送中…';
+
+  try {
+    if (currentSendType === 'email' || currentSendType === 'both') {
+      const res = await apiFetch('/api/send/email', 'POST', {
+        to, subject,
+        connectionInfo: state.conn,
+        sql,
+        filename: 'query_result',
+        sheetName: 'Sheet1',
+      });
+      if (!res.success) { showToast(`邮件发送失败: ${res.error}`, 'error'); }
+      else { showToast(`邮件已发送至 ${to}`, 'success'); }
+    }
+
+        if (currentSendType === 'wechat' || currentSendType === 'both') {
+          const res = await apiFetch('/api/send/wechat', 'POST', {
+        wechatRobotId: sendWechatRobot.id,
+        webhookUrl: sendWechatRobot.webhookUrl,
+        connectionInfo: state.conn,
+        sql,
+      });
+      if (!res.success) { showToast(`企微发送失败: ${res.error}`, 'error'); }
+      else { showToast('企微通知已发送', 'success'); }
+    }
+
+    closeSendModalBtn();
+  } catch (e) {
+    showToast(`发送失败: ${e.message}`, 'error');
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = '发送';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SMTP SETTINGS
+═══════════════════════════════════════════════════════════════ */
+async function loadSmtpSettings() {
+  try {
+    const res = await apiFetch('/api/settings/smtp');
+    if (res.success && res.config) {
+      document.getElementById('smtp-host').value = res.config.host || '';
+      document.getElementById('smtp-port').value = res.config.port || 465;
+      document.getElementById('smtp-secure').value = res.config.secure ? '1' : '0';
+      document.getElementById('smtp-user').value = res.config.user || '';
+      document.getElementById('smtp-pass').value = res.config.pass ? '****' : '';
+      document.getElementById('smtp-from-name').value = res.config.fromName || '';
+      document.getElementById('smtp-from-email').value = res.config.fromEmail || '';
+    }
+  } catch (_) { /* ignore */ }
+}
+
+async function saveSmtpSettings() {
+  const passVal = document.getElementById('smtp-pass').value;
+  const config = {
+    host: document.getElementById('smtp-host').value.trim(),
+    port: document.getElementById('smtp-port').value.trim(),
+    secure: document.getElementById('smtp-secure').value === '1',
+    user: document.getElementById('smtp-user').value.trim(),
+    pass: passVal === '****' ? undefined : passVal,
+    fromName: document.getElementById('smtp-from-name').value.trim(),
+    fromEmail: document.getElementById('smtp-from-email').value.trim(),
+  };
+
+  if (!config.host || !config.user) {
+    showToast('SMTP 服务器和用户名为必填项', 'error'); return;
+  }
+
+  try {
+    const res = await apiFetch('/api/settings/smtp', 'POST', config);
+    if (res.success) { showToast('邮件设置已保存', 'success'); }
+    else { showToast(`保存失败: ${res.error}`, 'error'); }
+  } catch (e) {
+    showToast(`保存失败: ${e.message}`, 'error');
+  }
+}
+
+async function testSmtp() {
+  await saveSmtpSettings();
+  showToast('邮件设置已保存，请发送测试邮件验证配置。', 'info');
+}
+
+async function loadWechatRobots() {
+  try {
+    const res = await apiFetch('/api/settings/wechat-robots');
+    if (res.success) {
+      state.wechatRobots = res.robots || [];
+      renderWechatRobotList();
+      renderWechatRobotSelects();
+    }
+  } catch (_) { /* ignore */ }
+}
+
+function renderWechatRobotList() {
+  const el = document.getElementById('wechat-robot-list');
+  if (!state.wechatRobots.length) {
+    el.innerHTML = '<div class="no-scheds">暂无企微机器人</div>';
+    return;
+  }
+  el.innerHTML = state.wechatRobots.map(robot => `
+    <div class="wechat-robot-item">
+      <div class="wechat-robot-name">${escapeHtml(robot.name)}</div>
+      <div class="wechat-robot-url">${escapeHtml(robot.webhookUrl || '')}</div>
+      <div class="wechat-robot-actions">
+        <button class="btn btn-secondary btn-sm" onclick="editWechatRobot('${robot.id}')">编辑</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteWechatRobot('${robot.id}')">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderWechatRobotSelects(selectedSendId = '', selectedScheduleId = '') {
+  const options = state.wechatRobots.length
+    ? state.wechatRobots.map(robot => `<option value="${escapeHtml(robot.id)}">${escapeHtml(robot.name)}</option>`).join('')
+    : '<option value="">请先配置企微机器人</option>';
+  ['send-wechat-robot', 'sched-wechat-robot'].forEach(id => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    select.innerHTML = options;
+    select.disabled = state.wechatRobots.length === 0;
+  });
+  if (selectedSendId && document.getElementById('send-wechat-robot')) document.getElementById('send-wechat-robot').value = selectedSendId;
+  if (selectedScheduleId && document.getElementById('sched-wechat-robot')) document.getElementById('sched-wechat-robot').value = selectedScheduleId;
+}
+
+function getSelectedWechatRobot(selectId) {
+  const select = document.getElementById(selectId);
+  if (!select || !select.value) return null;
+  return state.wechatRobots.find(robot => robot.id === select.value) || null;
+}
+
+function resetWechatRobotForm() {
+  document.getElementById('wechat-robot-id').value = '';
+  document.getElementById('wechat-robot-name').value = '';
+  document.getElementById('wechat-robot-webhook').value = '';
+}
+
+function editWechatRobot(id) {
+  const robot = state.wechatRobots.find(item => item.id === id);
+  if (!robot) return;
+  document.getElementById('wechat-robot-id').value = robot.id;
+  document.getElementById('wechat-robot-name').value = robot.name || '';
+  document.getElementById('wechat-robot-webhook').value = robot.webhookUrl || '';
+}
+
+async function saveWechatRobot() {
+  const id = document.getElementById('wechat-robot-id').value;
+  const name = document.getElementById('wechat-robot-name').value.trim();
+  const webhookUrl = document.getElementById('wechat-robot-webhook').value.trim();
+  if (!name) { showToast('请输入机器人名称', 'error'); return; }
+  if (!webhookUrl) { showToast('请输入企微 Webhook 地址', 'error'); return; }
+
+  try {
+    const res = await apiFetch(id ? `/api/settings/wechat-robots/${id}` : '/api/settings/wechat-robots', id ? 'PUT' : 'POST', { name, webhookUrl });
+    if (!res.success) { showToast(`保存失败: ${res.error}`, 'error'); return; }
+    showToast('企微机器人已保存', 'success');
+    resetWechatRobotForm();
+    await loadWechatRobots();
+  } catch (e) {
+    showToast(`保存失败: ${e.message}`, 'error');
+  }
+}
+
+async function deleteWechatRobot(id) {
+  if (!confirm('确定删除这个企微机器人吗？已有定时任务会继续使用保存时的 Webhook 快照。')) return;
+  try {
+    const res = await apiFetch(`/api/settings/wechat-robots/${id}`, 'DELETE');
+    if (!res.success) { showToast(`删除失败: ${res.error}`, 'error'); return; }
+    showToast('企微机器人已删除', 'success');
+    await loadWechatRobots();
+  } catch (e) {
+    showToast(`删除失败: ${e.message}`, 'error');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SCHEDULED TASKS
+═══════════════════════════════════════════════════════════════ */
+async function loadSchedules() {
+  try {
+    const res = await apiFetch('/api/schedules');
+    if (res.success) { renderScheduleList(res.tasks); }
+  } catch (_) { /* ignore */ }
+}
+
+function renderScheduleList(tasks) {
+  const el = document.getElementById('sched-list');
+  if (!tasks || tasks.length === 0) {
+    el.innerHTML = '<div class="no-scheds">暂无定时任务</div>';
+    return;
+  }
+  el.innerHTML = tasks.map(t => {
+    const sendIcon = t.sendType === 'email' ? '📧' : t.sendType === 'wechat' ? '💬' : '📧💬';
+      const lastLog = t.lastLog
+        ? `<div class="sched-log ${t.lastLog.status}">最近执行: ${formatScheduleStatus(t.lastLog.status)} · ${formatScheduleTime(t.lastLog.endedAt || t.lastLog.startedAt)}</div>`
+        : '<div class="sched-log">最近执行: 暂无</div>';
+    return `<div class="sched-item">
+      <div class="sched-name">${escapeHtml(t.name)}</div>
+      <div class="sched-detail">${sendIcon} Cron: ${escapeHtml(t.cron)}</div>
+      <div class="sched-detail sched-conn-label">数据库: ${escapeHtml(t.connectionLabel || '未命名连接')}</div>
+      ${t.wechatRobotName ? `<div class="sched-detail">企微: ${escapeHtml(t.wechatRobotName)}</div>` : ''}
+      ${lastLog}
+      <div class="sched-actions">
+        <button class="btn btn-secondary btn-sm" onclick="openEditSchedule('${t.id}')">编辑</button>
+        <button class="btn btn-secondary btn-sm" onclick="openScheduleLogs('${t.id}')">日志</button>
+        <button class="btn btn-success btn-sm" onclick="triggerSchedule('${t.id}')">▶ 立即执行</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteSchedule('${t.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function deleteSchedule(id) {
+  try {
+    const res = await apiFetch(`/api/schedules/${id}`, 'DELETE');
+    if (res.success) { showToast('任务已删除', 'success'); await loadSchedules(); }
+    else { showToast(`删除失败: ${res.error}`, 'error'); }
+  } catch (e) {
+    showToast(`删除失败: ${e.message}`, 'error');
+  }
+}
+
+function formatScheduleTime(iso) {
+  if (!iso) return '-';
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
+function formatScheduleStatus(status) {
+  return status === 'success' ? '成功' : status === 'failed' ? '失败' : '执行中';
+}
+
+function getScheduleConnectionChoices(extraConnection = null) {
+  const choices = [];
+  const seen = new Set();
+
+  function addChoice(conn, source) {
+    if (!conn) return;
+    const key = conn.id ? `id:${conn.id}` : `cfg:${getConnectionKey(conn)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    choices.push({
+      key,
+      label: getConnectionLabel(conn),
+      source,
+      connectionInfo: conn,
+    });
+  }
+
+  addChoice(extraConnection, 'bound');
+  loadSavedConns().forEach(conn => addChoice(conn, 'saved'));
+  addChoice(state.conn, 'current');
+  return choices;
+}
+
+function renderScheduleConnectionOptions(selectedConnection = null) {
+  const select = document.getElementById('sched-connection');
+  const choices = getScheduleConnectionChoices(selectedConnection);
+
+  if (!choices.length) {
+    select.innerHTML = '<option value="">请先保存或连接数据库</option>';
+    select.disabled = true;
+    return;
+  }
+
+  select.disabled = false;
+  select.innerHTML = choices.map(choice => {
+    const note = choice.source === 'bound' ? '（当前绑定）' : choice.source === 'current' ? '（当前连接）' : '';
+    return `<option value="${escapeHtml(choice.key)}">${escapeHtml(choice.label + note)}</option>`;
+  }).join('');
+
+  const selectedKey = selectedConnection
+    ? (selectedConnection.id ? `id:${selectedConnection.id}` : `cfg:${getConnectionKey(selectedConnection)}`)
+    : (state.conn ? (state.conn.id ? `id:${state.conn.id}` : `cfg:${getConnectionKey(state.conn)}`) : choices[0].key);
+  select.value = choices.some(choice => choice.key === selectedKey) ? selectedKey : choices[0].key;
+}
+
+function getSelectedScheduleConnection() {
+  const select = document.getElementById('sched-connection');
+  const choices = getScheduleConnectionChoices(state.editingScheduleConnection || null);
+  const selected = choices.find(choice => choice.key === select.value);
+  if (!selected) return null;
+  return {
+    connectionInfo: selected.connectionInfo,
+    connectionLabel: selected.label,
+  };
+}
+
+async function triggerSchedule(id) {
+  try {
+    showToast('正在手动触发任务…', 'info');
+    const res = await apiFetch(`/api/schedules/${id}/trigger`, 'POST');
+    if (res.success) {
+      showToast(res.message || '任务已触发', 'success');
+      setTimeout(loadSchedules, 1200);
+    }
+    else { showToast(`触发失败: ${res.error}`, 'error'); }
+  } catch (e) {
+    showToast(`触发失败: ${e.message}`, 'error');
+  }
+}
+
+function openScheduleModal() {
+  if (!state.conn && loadSavedConns().length === 0) { showToast('请先保存或连接数据库', 'error'); return; }
+  state.editingScheduleId = null;
+  state.editingScheduleConnection = null;
+  document.getElementById('schedule-modal-title').textContent = '⏰ 新建定时任务';
+  document.getElementById('schedule-save-btn').textContent = '创建';
+  // Pre-fill SQL from editor
+  const sql = editor.getValue().trim();
+  document.getElementById('sched-sql').value = sql;
+  document.getElementById('sched-name').value = '';
+  document.getElementById('sched-cron').value = '0 9 * * *';
+  document.getElementById('sched-send-type').value = 'wechat';
+  document.getElementById('sched-email-to').value = '';
+  document.getElementById('sched-email-subject').value = '';
+  renderScheduleConnectionOptions(state.conn);
+  renderWechatRobotSelects();
+  toggleSchedSendFields();
+  document.getElementById('schedule-modal').classList.add('open');
+}
+
+function closeScheduleModal(e) {
+  if (e.target === document.getElementById('schedule-modal')) closeScheduleModalBtn();
+}
+function closeScheduleModalBtn() {
+  document.getElementById('schedule-modal').classList.remove('open');
+  state.editingScheduleId = null;
+  state.editingScheduleConnection = null;
+}
+
+function setCronPreset(expr) {
+  document.getElementById('sched-cron').value = expr;
+}
+
+function toggleSchedSendFields() {
+  const type = document.getElementById('sched-send-type').value;
+  document.getElementById('sched-email-fields').style.display = (type === 'email' || type === 'both') ? 'block' : 'none';
+  document.getElementById('sched-wechat-fields').style.display = (type === 'wechat' || type === 'both') ? 'block' : 'none';
+}
+
+async function openEditSchedule(id) {
+  try {
+    const res = await apiFetch(`/api/schedules/${id}`);
+    if (!res.success) { showToast(`加载任务失败: ${res.error}`, 'error'); return; }
+    const t = res.task;
+    state.editingScheduleId = id;
+    state.editingScheduleConnection = {
+      ...(t.connectionInfo || {}),
+      label: t.connectionLabel || (t.connectionInfo && getConnectionLabel(t.connectionInfo)) || '',
+    };
+    document.getElementById('schedule-modal-title').textContent = '⏰ 修改定时任务';
+    document.getElementById('schedule-save-btn').textContent = '保存修改';
+    document.getElementById('sched-name').value = t.name || '';
+    document.getElementById('sched-sql').value = t.sql || '';
+    document.getElementById('sched-cron').value = t.cron || '0 9 * * *';
+    document.getElementById('sched-send-type').value = t.sendType || 'wechat';
+    document.getElementById('sched-email-to').value = t.emailTo || '';
+    document.getElementById('sched-email-subject').value = t.emailSubject || '';
+    if (t.wechatRobotId && !state.wechatRobots.some(robot => robot.id === t.wechatRobotId) && t.wechatWebhook) {
+      state.wechatRobots = [{
+        id: t.wechatRobotId,
+        name: t.wechatRobotName || '旧任务机器人',
+        webhookUrl: t.wechatWebhook,
+      }, ...state.wechatRobots];
+    }
+    renderWechatRobotSelects('', t.wechatRobotId || '');
+    renderScheduleConnectionOptions(state.editingScheduleConnection);
+    toggleSchedSendFields();
+    document.getElementById('schedule-modal').classList.add('open');
+  } catch (e) {
+    showToast(`加载任务失败: ${e.message}`, 'error');
+  }
+}
+
+async function openScheduleLogs(id) {
+  try {
+    document.getElementById('schedule-log-title').textContent = '执行日志';
+    document.getElementById('schedule-log-list').innerHTML = '<div class="no-scheds">正在加载...</div>';
+    document.getElementById('schedule-log-modal').classList.add('open');
+    const res = await apiFetch(`/api/schedules/${id}/logs`);
+    if (!res.success) {
+      document.getElementById('schedule-log-list').innerHTML = `<div class="no-scheds">加载失败: ${escapeHtml(res.error)}</div>`;
+      return;
+    }
+    renderScheduleLogs(res.logs || []);
+  } catch (e) {
+    document.getElementById('schedule-log-list').innerHTML = `<div class="no-scheds">加载失败: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderScheduleLogs(logs) {
+  const el = document.getElementById('schedule-log-list');
+  if (!logs.length) {
+    el.innerHTML = '<div class="no-scheds">暂无执行日志</div>';
+    return;
+  }
+  el.innerHTML = logs.map(log => `
+    <div class="schedule-log-item">
+      <div class="schedule-log-head">
+        <strong class="schedule-log-status ${log.status}">${formatScheduleStatus(log.status)}</strong>
+        <span>${escapeHtml(log.triggerType === 'manual' ? '手动执行' : '自动执行')}</span>
+      </div>
+      <div class="schedule-log-meta">
+        ${formatScheduleTime(log.startedAt)} · 耗时 ${log.durationMs ?? '-'} ms · 行数 ${log.rowCount ?? '-'}
+      </div>
+      <div class="schedule-log-msg">${escapeHtml(log.message || log.error || '')}</div>
+    </div>
+  `).join('');
+}
+
+function closeScheduleLogModal(e) {
+  if (e.target === document.getElementById('schedule-log-modal')) closeScheduleLogModalBtn();
+}
+
+function closeScheduleLogModalBtn() {
+  document.getElementById('schedule-log-modal').classList.remove('open');
+}
+
+async function saveSchedule() {
+  const name = document.getElementById('sched-name').value.trim();
+  const sql = document.getElementById('sched-sql').value.trim();
+  const cronExpr = document.getElementById('sched-cron').value.trim();
+  const sendType = document.getElementById('sched-send-type').value;
+  const emailTo = document.getElementById('sched-email-to').value.trim();
+  const emailSubject = document.getElementById('sched-email-subject').value.trim();
+  const schedWechatRobot = getSelectedWechatRobot('sched-wechat-robot');
+
+  if (!name) { showToast('请输入任务名称', 'error'); return; }
+  if (!sql) { showToast('请输入 SQL 查询语句', 'error'); return; }
+  if (!cronExpr) { showToast('请输入 Cron 表达式', 'error'); return; }
+  const selectedConnection = getSelectedScheduleConnection();
+  if (!selectedConnection) {
+    showToast('请选择任务绑定的数据库连接', 'error');
+    return;
+  }
+
+  if ((sendType === 'email' || sendType === 'both') && !emailTo) {
+    showToast('请输入收件人邮箱', 'error'); return;
+  }
+  if ((sendType === 'wechat' || sendType === 'both') && !schedWechatRobot) {
+    showToast('请选择企微机器人', 'error'); return;
+  }
+
+  try {
+    const isEditing = !!state.editingScheduleId;
+    const url = isEditing ? `/api/schedules/${state.editingScheduleId}` : '/api/schedules';
+    const method = isEditing ? 'PUT' : 'POST';
+    const res = await apiFetch(url, method, {
+      name,
+      cron: cronExpr,
+      connectionInfo: selectedConnection.connectionInfo,
+      connectionLabel: selectedConnection.connectionLabel,
+      sql,
+      sendType,
+      emailTo,
+      emailSubject,
+      wechatWebhook: schedWechatRobot ? schedWechatRobot.webhookUrl : '',
+      wechatRobotId: schedWechatRobot ? schedWechatRobot.id : '',
+      wechatRobotName: schedWechatRobot ? schedWechatRobot.name : '',
+    });
+    if (res.success) {
+      showToast(`任务"${name}"已${isEditing ? '修改' : '创建'}`, 'success');
+      closeScheduleModalBtn();
+      await loadSchedules();
+    } else {
+      showToast(`${isEditing ? '修改' : '创建'}失败: ${res.error}`, 'error');
+    }
+  } catch (e) {
+    showToast(`保存失败: ${e.message}`, 'error');
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+out/
+build/
+
+# Runtime data
+app.sqlite
+*.sqlite
+*.db
+
+# User config & secrets
+smtp-config.json
+wechat-robots.json
+.env
+.env.*
+
+# Logs
+*.log
+*.err
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Misc
+NVIDIA Corporation/

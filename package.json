@@ -1,0 +1,73 @@
+{
+  "name": "db-query-tool",
+  "version": "1.0.0",
+  "description": "Database query tool supporting MySQL and PostgreSQL with XLSX export",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "node server.js",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "form-data": "^4.0.5",
+    "mysql2": "^3.6.5",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^2.7.0",
+    "nodemailer": "^6.9.7",
+    "pg": "^8.11.3",
+    "sql.js": "^1.14.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^22.3.27",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.dbquery.tool",
+    "productName": "数据库查询工具",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "server.js",
+      "electron/**",
+      "public/**",
+      "node_modules/**"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "数据库查询工具"
+    },
+    "portable": {
+      "artifactName": "数据库查询工具-${version}-portable.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "title": "数据库查询工具 ${version}",
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    }
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "license": "MIT"
+}
